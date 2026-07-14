@@ -9,12 +9,135 @@ import {
 } from './error.util.js';
 import { saveRawResponse } from './response.util.js';
 import { Blob } from 'buffer';
+import { request as httpsRequest } from 'https';
 
 // Create a contextualized logger for this file
 const transportLogger = Logger.forContext('utils/transport.util.ts');
 
 // Log transport utility initialization
 transportLogger.debug('Transport utility initialized');
+
+/**
+ * ЗАЧЕМ: в некоторых хост-процессах (наблюдалось в Claude Desktop/Claude Code
+ * MCP-рантайме, 2026-07) глобальный fetch (undici) падает с
+ * "TypeError: fetch failed" при живой сети — классический node:https стек в том
+ * же процессе при этом работает. safeFetch() пробует штатный fetch и при таком
+ * падении повторяет запрос через node:https, отдавая стандартный Response,
+ * чтобы весь остальной код (text/arrayBuffer/headers) не менялся.
+ * FORCE_HTTPS_FALLBACK=true — принудительно мимо undici (диагностика/аварийный рычаг).
+ */
+interface HttpsFallbackInit {
+	method?: string;
+	headers?: Record<string, string>;
+	bodyBuffer?: Buffer;
+}
+
+function httpsFetch(
+	url: string,
+	init: HttpsFallbackInit,
+	redirectsLeft = 5,
+): Promise<Response> {
+	return new Promise((resolve, reject) => {
+		const u = new URL(url);
+		const req = httpsRequest(
+			{
+				hostname: u.hostname,
+				port: u.port || 443,
+				path: u.pathname + u.search,
+				method: init.method || 'GET',
+				headers: init.headers,
+			},
+			(res) => {
+				const status = res.statusCode || 0;
+				const location = res.headers.location;
+				if (
+					[301, 302, 303, 307, 308].includes(status) &&
+					location &&
+					redirectsLeft > 0
+				) {
+					res.resume();
+					const next = new URL(location, url);
+					const headers = { ...init.headers };
+					// ЗАЧЕМ: как и fetch — не отдаём Basic-креды чужому хосту
+					// (Jira редиректит контент вложений на media-CDN с подписанным URL)
+					if (next.host !== u.host) {
+						delete headers.Authorization;
+					}
+					let method = init.method;
+					let bodyBuffer = init.bodyBuffer;
+					if (status === 303 || ((status === 301 || status === 302) && method === 'POST')) {
+						method = 'GET';
+						bodyBuffer = undefined;
+					}
+					resolve(
+						httpsFetch(next.toString(), { method, headers, bodyBuffer }, redirectsLeft - 1),
+					);
+					return;
+				}
+				const chunks: Buffer[] = [];
+				res.on('data', (c: Buffer) => chunks.push(c));
+				res.on('end', () => {
+					const headers = new Headers();
+					for (const [k, v] of Object.entries(res.headers)) {
+						if (v !== undefined) {
+							headers.set(k, Array.isArray(v) ? v.join(', ') : v);
+						}
+					}
+					const noBody = status === 204 || status === 304;
+					resolve(
+						new Response(noBody ? null : Buffer.concat(chunks), {
+							status,
+							statusText: res.statusMessage || '',
+							headers,
+						}),
+					);
+				});
+				res.on('error', reject);
+			},
+		);
+		req.on('error', reject);
+		if (init.bodyBuffer) {
+			req.write(init.bodyBuffer);
+		}
+		req.end();
+	});
+}
+
+async function safeFetch(url: string, init: RequestInit): Promise<Response> {
+	const force = process.env.FORCE_HTTPS_FALLBACK === 'true';
+	if (!force) {
+		try {
+			return await fetch(url, init);
+		} catch (error) {
+			// Только сетевой отказ самого undici — HTTP-ошибки сюда не попадают
+			// (fetch резолвится и на 4xx/5xx)
+			if (!(error instanceof TypeError)) {
+				throw error;
+			}
+			transportLogger.warn(
+				`global fetch failed (${error.message}), retrying via node:https fallback`,
+				{ url },
+			);
+		}
+	}
+	const headers = { ...(init.headers as Record<string, string>) };
+	let bodyBuffer: Buffer | undefined;
+	if (init.body instanceof FormData) {
+		// ЗАЧЕМ: Response кодирует multipart/form-data (с boundary) без сети
+		const encoded = new Response(init.body);
+		bodyBuffer = Buffer.from(await encoded.arrayBuffer());
+		const ct = encoded.headers.get('content-type');
+		if (ct) {
+			headers['Content-Type'] = ct;
+		}
+	} else if (typeof init.body === 'string') {
+		bodyBuffer = Buffer.from(init.body);
+	}
+	if (bodyBuffer) {
+		headers['Content-Length'] = String(bodyBuffer.length);
+	}
+	return httpsFetch(url, { method: init.method || 'GET', headers, bodyBuffer });
+}
 
 /**
  * Interface for Atlassian API credentials
@@ -118,7 +241,7 @@ export async function fetchAtlassian<T>(
 	const startTime = performance.now();
 
 	try {
-		const response = await fetch(url, requestOptions);
+		const response = await safeFetch(url, requestOptions);
 		const endTime = performance.now();
 		const requestDuration = (endTime - startTime).toFixed(2);
 
@@ -427,7 +550,7 @@ export async function fetchAtlassianMultipart<T>(
 	const startTime = performance.now();
 
 	try {
-		const response = await fetch(url, {
+		const response = await safeFetch(url, {
 			method: 'POST',
 			headers,
 			body: formData,
@@ -570,7 +693,7 @@ export async function fetchAtlassianBinary(
 	const startTime = performance.now();
 
 	try {
-		const response = await fetch(url, {
+		const response = await safeFetch(url, {
 			method: 'GET',
 			headers,
 		});
