@@ -1,0 +1,18 @@
+# Source/tests — only dist/ + node_modules run at runtime
+src/
+scripts/
+*.md
+tsconfig.json
+eslint.config.mjs
+.prettierrc
+.env.example
+.node-version
+package-lock.json
+
+# Never ship local secrets or dev artifacts
+.env
+coverage/
+*.tgz
+
+# Build outputs / scratch
+*.mcpb

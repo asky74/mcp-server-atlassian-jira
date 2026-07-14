@@ -1,0 +1,353 @@
+import {
+	getAtlassianCredentials,
+	fetchAtlassian,
+	fetchAtlassianMultipart,
+	fetchAtlassianBinary,
+} from './transport.util.js';
+import { config } from './config.util.js';
+
+/**
+ * Generic response type for Jira API paginated results
+ */
+interface PaginatedResponse<T> {
+	values: T[];
+	startAt: number;
+	maxResults: number;
+	total: number;
+}
+
+/**
+ * Minimal project structure for testing
+ */
+interface ProjectSummary {
+	id: string;
+	key: string;
+	name: string;
+}
+
+describe('Transport Utility', () => {
+	// Load configuration before all tests
+	beforeAll(() => {
+		// Load configuration from all sources
+		config.load();
+	});
+
+	describe('getAtlassianCredentials', () => {
+		it('should return credentials when environment variables are set', () => {
+			// This test will be skipped if credentials are not available
+			const credentials = getAtlassianCredentials();
+			if (!credentials) {
+				console.warn(
+					'Skipping test: No Atlassian credentials available',
+				);
+				return;
+			}
+
+			// Verify the structure of the credentials
+			expect(credentials).toHaveProperty('siteName');
+			expect(credentials).toHaveProperty('userEmail');
+			expect(credentials).toHaveProperty('apiToken');
+
+			// Verify the credentials are not empty
+			expect(credentials.siteName).toBeTruthy();
+			expect(credentials.userEmail).toBeTruthy();
+			expect(credentials.apiToken).toBeTruthy();
+		});
+
+		it('should return null when environment variables are missing', () => {
+			// Save original values
+			const origSiteName = config.get('ATLASSIAN_SITE_NAME');
+			const origUserEmail = config.get('ATLASSIAN_USER_EMAIL');
+			const origApiToken = config.get('ATLASSIAN_API_TOKEN');
+
+			// Create test environment without credentials
+			const testConfig = {
+				ATLASSIAN_SITE_NAME: undefined,
+				ATLASSIAN_USER_EMAIL: undefined,
+				ATLASSIAN_API_TOKEN: undefined,
+			};
+
+			// Test with missing credentials
+			try {
+				// Use Object.defineProperty to temporarily change config.get behavior without mocking
+				config.get = (key: string) =>
+					testConfig[key as keyof typeof testConfig];
+
+				// Call the function
+				const credentials = getAtlassianCredentials();
+
+				// Verify the result is null
+				expect(credentials).toBeNull();
+			} finally {
+				// Restore config behavior for subsequent tests
+				config.get = (key: string) => {
+					if (key === 'ATLASSIAN_SITE_NAME') return origSiteName;
+					if (key === 'ATLASSIAN_USER_EMAIL') return origUserEmail;
+					if (key === 'ATLASSIAN_API_TOKEN') return origApiToken;
+					return config.get(key);
+				};
+			}
+		});
+	});
+
+	describe('fetchAtlassian', () => {
+		it('should successfully fetch data from the Atlassian API', async () => {
+			// This test will be skipped if credentials are not available
+			const credentials = getAtlassianCredentials();
+			if (!credentials) {
+				console.warn(
+					'Skipping test: No Atlassian credentials available',
+				);
+				return;
+			}
+
+			// Make a call to a real API endpoint - project search
+			const result = await fetchAtlassian<
+				PaginatedResponse<ProjectSummary>
+			>(credentials, '/rest/api/3/project/search', {
+				method: 'GET',
+				headers: {
+					'Content-Type': 'application/json',
+				},
+			});
+
+			// Verify the response structure from real API
+			expect(result.data).toHaveProperty('values');
+			expect(Array.isArray(result.data.values)).toBe(true);
+			expect(result.data).toHaveProperty('startAt');
+			expect(result.data).toHaveProperty('maxResults');
+			expect(result.data).toHaveProperty('total');
+
+			// If projects are returned, verify their structure
+			if (result.data.values.length > 0) {
+				const project = result.data.values[0];
+				expect(project).toHaveProperty('id');
+				expect(project).toHaveProperty('key');
+				expect(project).toHaveProperty('name');
+			}
+		}, 15000); // Increased timeout for real API call
+
+		it('should handle API errors correctly', async () => {
+			// This test will be skipped if credentials are not available
+			const credentials = getAtlassianCredentials();
+			if (!credentials) {
+				console.warn(
+					'Skipping test: No Atlassian credentials available',
+				);
+				return;
+			}
+
+			// Call a non-existent endpoint and expect it to throw
+			await expect(
+				fetchAtlassian(
+					credentials,
+					'/rest/api/3/non-existent-endpoint',
+				),
+			).rejects.toThrow();
+		}, 15000); // Increased timeout for real API call
+
+		it('should normalize paths that do not start with a slash', async () => {
+			// This test will be skipped if credentials are not available
+			const credentials = getAtlassianCredentials();
+			if (!credentials) {
+				console.warn(
+					'Skipping test: No Atlassian credentials available',
+				);
+				return;
+			}
+
+			// Call the function with a path that doesn't start with a slash
+			const result = await fetchAtlassian<
+				PaginatedResponse<ProjectSummary>
+			>(credentials, 'rest/api/3/project/search', {
+				method: 'GET',
+			});
+
+			// Verify the response structure from real API
+			expect(result.data).toHaveProperty('values');
+			expect(Array.isArray(result.data.values)).toBe(true);
+			expect(result.data).toHaveProperty('startAt');
+			expect(result.data).toHaveProperty('maxResults');
+			expect(result.data).toHaveProperty('total');
+		}, 15000); // Increased timeout for real API call
+
+		it('should support custom request options', async () => {
+			// This test will be skipped if credentials are not available
+			const credentials = getAtlassianCredentials();
+			if (!credentials) {
+				console.warn(
+					'Skipping test: No Atlassian credentials available',
+				);
+				return;
+			}
+
+			// Custom request options including pagination
+			const options = {
+				method: 'GET' as const,
+				headers: {
+					Accept: 'application/json',
+					'Content-Type': 'application/json',
+				},
+			};
+
+			// Call a real endpoint with pagination parameter
+			const result = await fetchAtlassian<
+				PaginatedResponse<ProjectSummary>
+			>(credentials, '/rest/api/3/project/search?maxResults=1', options);
+
+			// Verify the response structure and pagination
+			expect(result.data).toHaveProperty('values');
+			expect(Array.isArray(result.data.values)).toBe(true);
+			expect(result.data).toHaveProperty('startAt');
+			expect(result.data).toHaveProperty('maxResults', 1); // Should respect maxResults=1
+			expect(result.data.values.length).toBeLessThanOrEqual(1);
+		}, 15000); // Increased timeout for real API call
+	});
+
+	describe('fetchAtlassian binary response handling', () => {
+		const fakeCredentials = {
+			siteName: 'fake-site-that-does-not-exist',
+			userEmail: 'fake@example.com',
+			apiToken: 'fake-token',
+		};
+
+		afterEach(() => {
+			jest.restoreAllMocks();
+		});
+
+		it('base64-encodes non-textual bodies instead of lossily decoding them as UTF-8 text', async () => {
+			// Bytes that are not valid UTF-8: response.text() would replace the
+			// 0xFF/0xFE/0xC3-0x28 sequences with U+FFFD, corrupting them beyond
+			// recovery. A correct fix must never route this content-type through
+			// response.text() at all.
+			const originalBytes = Buffer.from([
+				0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0xff, 0xd8, 0xfe,
+				0x00, 0x01, 0x02, 0xc3, 0x28,
+			]);
+
+			jest.spyOn(global, 'fetch').mockResolvedValue(
+				new Response(originalBytes, {
+					status: 200,
+					headers: { 'content-type': 'image/png' },
+				}) as unknown as Response,
+			);
+
+			const result = await fetchAtlassian<{
+				__binary: boolean;
+				contentType: string;
+				byteLength: number;
+				base64: string;
+			}>(fakeCredentials, '/rest/api/3/attachment/content/12345');
+
+			expect(result.data.__binary).toBe(true);
+			expect(result.data.contentType).toBe('image/png');
+			expect(result.data.byteLength).toBe(originalBytes.length);
+
+			// The point of the fix: base64 round-trip must be byte-exact.
+			const roundTripped = Buffer.from(result.data.base64, 'base64');
+			expect(roundTripped.equals(originalBytes)).toBe(true);
+		});
+
+		it('still parses JSON bodies as JSON (binary handling does not swallow textual responses)', async () => {
+			jest.spyOn(global, 'fetch').mockResolvedValue(
+				new Response(JSON.stringify({ ok: true, id: '12345' }), {
+					status: 200,
+					headers: { 'content-type': 'application/json;charset=UTF-8' },
+				}) as unknown as Response,
+			);
+
+			const result = await fetchAtlassian<{ ok: boolean; id: string }>(
+				fakeCredentials,
+				'/rest/api/3/attachment/12345',
+			);
+
+			expect(result.data).toEqual({ ok: true, id: '12345' });
+		});
+	});
+
+	describe('fetchAtlassianMultipart', () => {
+		it('should handle authentication errors correctly', async () => {
+			// Create fake credentials to test error handling
+			const fakeCredentials = {
+				siteName: 'fake-site-that-does-not-exist',
+				userEmail: 'fake@example.com',
+				apiToken: 'fake-token',
+			};
+
+			const testBuffer = Buffer.from('test content');
+
+			// Expect the call to fail with an auth or connection error
+			await expect(
+				fetchAtlassianMultipart(
+					fakeCredentials,
+					'/rest/api/3/issue/TEST-1/attachments',
+					testBuffer,
+					'test.txt',
+					'text/plain',
+				),
+			).rejects.toThrow();
+		}, 15000);
+
+		it('should properly format multipart request', async () => {
+			// This test will be skipped if credentials are not available
+			const credentials = getAtlassianCredentials();
+			if (!credentials) {
+				console.warn(
+					'Skipping test: No Atlassian credentials available',
+				);
+				return;
+			}
+
+			// Test with a non-existent issue to verify proper error handling
+			// (not auth error, but 404 for issue)
+			const testBuffer = Buffer.from('test content');
+
+			await expect(
+				fetchAtlassianMultipart(
+					credentials,
+					'/rest/api/3/issue/NONEXISTENT-99999/attachments',
+					testBuffer,
+					'test.txt',
+					'text/plain',
+				),
+			).rejects.toThrow(/not found|does not exist/i);
+		}, 15000);
+	});
+
+	describe('fetchAtlassianBinary', () => {
+		it('should handle authentication errors correctly', async () => {
+			// Create fake credentials to test error handling
+			const fakeCredentials = {
+				siteName: 'fake-site-that-does-not-exist',
+				userEmail: 'fake@example.com',
+				apiToken: 'fake-token',
+			};
+
+			// Expect the call to fail with an auth or connection error
+			await expect(
+				fetchAtlassianBinary(
+					fakeCredentials,
+					'https://fake-site-that-does-not-exist.atlassian.net/rest/api/3/attachment/content/12345',
+				),
+			).rejects.toThrow();
+		}, 15000);
+
+		it('should handle 404 errors for non-existent attachments', async () => {
+			// This test will be skipped if credentials are not available
+			const credentials = getAtlassianCredentials();
+			if (!credentials) {
+				console.warn(
+					'Skipping test: No Atlassian credentials available',
+				);
+				return;
+			}
+
+			// Try to download a non-existent attachment
+			const fakeUrl = `https://${credentials.siteName}.atlassian.net/rest/api/3/attachment/content/99999999`;
+
+			await expect(
+				fetchAtlassianBinary(credentials, fakeUrl),
+			).rejects.toThrow(/not found/i);
+		}, 15000);
+	});
+});

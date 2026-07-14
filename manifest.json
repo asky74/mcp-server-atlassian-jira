@@ -1,0 +1,111 @@
+{
+  "$schema": "https://raw.githubusercontent.com/anthropics/mcpb/main/schemas/mcpb-manifest-v0.4.schema.json",
+  "manifest_version": "0.4",
+  "name": "jira",
+  "display_name": "Jira MCP (UFC fork)",
+  "version": "3.3.0-ufc.1",
+  "description": "Fork of @aashari/mcp-server-atlassian-jira: generic Jira REST passthrough (jira_get/post/put/patch/delete) plus jira_attach/jira_get_attachment ported from community PR #173, with a fix for binary attachment/thumbnail download corruption (upstream lossily UTF-8-decoded non-textual response bodies). Complements the team's sooperset/mcp-atlassian (server \"atlassian\") — does not replace it.",
+  "author": {
+    "name": "UFC 1C team"
+  },
+  "license": "ISC",
+  "keywords": [
+    "jira",
+    "atlassian",
+    "mcp",
+    "issue-tracking"
+  ],
+  "server": {
+    "type": "node",
+    "entry_point": "dist/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": [
+        "${__dirname}/dist/index.js"
+      ],
+      "env": {
+        "TRANSPORT_MODE": "stdio",
+        "USE_DOTENV": "${user_config.use_dotenv}",
+        "DOTENV_CONFIG_PATH": "${user_config.dotenv_path}",
+        "ATLASSIAN_SITE_NAME": "${user_config.atlassian_site_name}",
+        "ATLASSIAN_USER_EMAIL": "${user_config.atlassian_user_email}",
+        "ATLASSIAN_API_TOKEN": "${user_config.atlassian_api_token}"
+      }
+    }
+  },
+  "user_config": {
+    "use_dotenv": {
+      "type": "boolean",
+      "title": "Read credentials from a .env file",
+      "description": "ON: read Atlassian credentials from the .env file below (default ~/.claude/jira.env), and leave the three fields below empty. OFF: enter them in the fields below instead.",
+      "default": true
+    },
+    "dotenv_path": {
+      "type": "string",
+      "title": ".env file path",
+      "description": "Path to a .env file holding ATLASSIAN_SITE_NAME / ATLASSIAN_USER_EMAIL / ATLASSIAN_API_TOKEN. Used only when the toggle above is ON. A leading ~ expands to your home directory.",
+      "required": false,
+      "default": "~/.claude/jira.env"
+    },
+    "atlassian_site_name": {
+      "type": "string",
+      "title": "Atlassian site name",
+      "description": "The subdomain in https://<site>.atlassian.net (e.g. \"ufcit\"). Leave empty when using the .env file above.",
+      "required": false
+    },
+    "atlassian_user_email": {
+      "type": "string",
+      "title": "Atlassian account email",
+      "description": "Your Jira login email. Leave empty when using the .env file above.",
+      "required": false
+    },
+    "atlassian_api_token": {
+      "type": "string",
+      "title": "Atlassian API token",
+      "description": "Generate at id.atlassian.com -> Security -> API tokens. Leave empty when using the .env file above. When set, it is stored by Claude Desktop in the OS keychain (sensitive), never in this repo.",
+      "sensitive": true,
+      "required": false
+    }
+  },
+  "tools": [
+    {
+      "name": "jira_get",
+      "description": "Generic GET request to the Jira REST API (JQ-filterable, TOON/JSON output)"
+    },
+    {
+      "name": "jira_post",
+      "description": "Generic POST request to the Jira REST API"
+    },
+    {
+      "name": "jira_put",
+      "description": "Generic PUT request to the Jira REST API"
+    },
+    {
+      "name": "jira_patch",
+      "description": "Generic PATCH request to the Jira REST API"
+    },
+    {
+      "name": "jira_delete",
+      "description": "Generic DELETE request to the Jira REST API"
+    },
+    {
+      "name": "jira_attach",
+      "description": "Upload a file to a Jira issue as an attachment (multipart/form-data)"
+    },
+    {
+      "name": "jira_get_attachment",
+      "description": "Download a Jira attachment to a local file, byte-exact"
+    }
+  ],
+  "compatibility": {
+    "claude_desktop": ">=1.0.0",
+    "platforms": [
+      "win32",
+      "darwin",
+      "linux"
+    ],
+    "runtimes": {
+      "node": ">=18"
+    }
+  }
+}
