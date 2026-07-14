@@ -43,6 +43,14 @@ class ConfigLoader {
 			'[src/utils/config.util.ts@load] Loading configuration...',
 		);
 
+		// ЗАЧЕМ: некоторые хосты (наблюдалось: Claude-Code-сессия, поднимающая
+		// Desktop-коннектор) передают env из MCPB-манифеста БЕЗ подстановки
+		// ${user_config.*} — переменная приходит литеральной строкой "${...}".
+		// Такое значение непустое, поэтому иначе оно перекрыло бы значения из
+		// .env-файла и утекло бы в URL ("${user_config...}.atlassian.net" →
+		// ENOTFOUND). Считаем неподставленный шаблон незаданной переменной.
+		this.dropUnresolvedTemplates();
+
 		// Priority 3: Load from global config file
 		this.loadFromGlobalConfig();
 
@@ -56,6 +64,25 @@ class ConfigLoader {
 		configLogger.debug(
 			'[src/utils/config.util.ts@load] Configuration loaded successfully',
 		);
+	}
+
+	/**
+	 * Drop env vars whose value is an unresolved "${...}" template
+	 * (see the why-comment at the call site in load()).
+	 */
+	private dropUnresolvedTemplates(): void {
+		const methodLogger = Logger.forContext(
+			'utils/config.util.ts',
+			'dropUnresolvedTemplates',
+		);
+		for (const [key, value] of Object.entries(process.env)) {
+			if (value !== undefined && /^\$\{[^}]*\}$/.test(value)) {
+				methodLogger.debug(
+					`Dropping unresolved template env var ${key}=${value}`,
+				);
+				delete process.env[key];
+			}
+		}
 	}
 
 	/**
@@ -86,15 +113,24 @@ class ConfigLoader {
 		if (envPath && /^~(?=$|[\\/])/.test(envPath)) {
 			envPath = path.join(os.homedir(), envPath.slice(1));
 		}
-		if (!envPath) {
-			envPath = path.resolve('.env');
-		}
+		// ЗАЧЕМ последний fallback на ~/.claude/jira.env: если хост потерял
+		// DOTENV_CONFIG_PATH (напр. передал его неподставленным шаблоном —
+		// см. dropUnresolvedTemplates), сервер всё равно находит per-user
+		// файл кредов по принятому командой пути.
+		const candidates = envPath
+			? [envPath]
+			: [
+					path.resolve('.env'),
+					path.join(os.homedir(), '.claude', 'jira.env'),
+				];
 
 		try {
-			if (!fs.existsSync(envPath)) {
-				methodLogger.debug(`No .env file at ${envPath}`);
+			const found = candidates.find((p) => fs.existsSync(p));
+			if (!found) {
+				methodLogger.debug(`No .env file at ${candidates.join(' | ')}`);
 				return;
 			}
+			envPath = found;
 			// Parse only — do NOT let dotenv write to process.env directly.
 			// We set a key only when it is absent or empty, so an empty
 			// ATLASSIAN_* handed in by a launcher (e.g. an unfilled Claude

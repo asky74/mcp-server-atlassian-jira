@@ -1,6 +1,6 @@
 {
 	"name": "@aashari/mcp-server-atlassian-jira",
-	"version": "3.3.0-ufc.2",
+	"version": "3.3.0-ufc.3",
 	"description": "UFC fork of @aashari/mcp-server-atlassian-jira: generic Jira REST passthrough with a binary-response corruption fix + jira_attach/jira_get_attachment (community PR #173). Installed via npx from git by the jira@ufc-1c Claude Code plugin.",
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",

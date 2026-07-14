@@ -3,7 +3,7 @@
   "manifest_version": "0.4",
   "name": "jira",
   "display_name": "Jira MCP (UFC fork)",
-  "version": "3.3.0-ufc.2",
+  "version": "3.3.0-ufc.3",
   "description": "Fork of @aashari/mcp-server-atlassian-jira: generic Jira REST passthrough (jira_get/post/put/patch/delete) plus jira_attach/jira_get_attachment ported from community PR #173, with a fix for binary attachment/thumbnail download corruption (upstream lossily UTF-8-decoded non-textual response bodies).",
   "author": {
     "name": "UFC 1C team"

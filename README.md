@@ -31,6 +31,12 @@ Private UFC fork of
    forces the fallback path (diagnostics / emergency lever). Verified live:
    JSON GET, JQL search, and a byte-exact 2.1 MB binary download through the
    media-CDN redirect.
+6. **Unresolved-template env guard + creds-path fallback** - some hosts pass
+   the MCPB manifest env without substituting `${user_config.*}`; a literal
+   "${...}" value is non-empty and would shadow the .env file and leak into
+   the URL ("ENOTFOUND ${user_config...}.atlassian.net"). Such values are now
+   treated as unset, and when no `DOTENV_CONFIG_PATH` survives, the .env
+   lookup falls back to `<cwd>/.env`, then `~/.claude/jira.env`.
 
 Full background and verification evidence:
 `tools/jira-mcp-plugin/README.md` in the `1C_Workspace` repo.
@@ -44,7 +50,7 @@ declares:
 
 ```json
 "command": "npx",
-"args": ["-y", "github:asky74/mcp-server-atlassian-jira#v3.3.0-ufc.2"]
+"args": ["-y", "github:asky74/mcp-server-atlassian-jira#v3.3.0-ufc.3"]
 ```
 
 On first start npm clones this repo (using your system `git` - your existing
