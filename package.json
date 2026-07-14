@@ -7,7 +7,7 @@
 	"type": "commonjs",
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/arcankostenko/mcp-server-atlassian-jira.git"
+		"url": "https://github.com/asky74/mcp-server-atlassian-jira.git"
 	},
 	"bin": {
 		"mcp-atlassian-jira": "./dist/index.js"

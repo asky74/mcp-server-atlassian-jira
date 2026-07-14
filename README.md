@@ -34,7 +34,7 @@ declares:
 
 ```json
 "command": "npx",
-"args": ["-y", "github:arcankostenko/mcp-server-atlassian-jira#v3.3.0-ufc.1"]
+"args": ["-y", "github:asky74/mcp-server-atlassian-jira#v3.3.0-ufc.1"]
 ```
 
 On first start npm clones this repo (using your system `git` — your existing
